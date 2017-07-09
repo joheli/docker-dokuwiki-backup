@@ -2,7 +2,7 @@ version: '2'
 
 services:
    dokuwiki:
-     image: dokuwiki:02
+     image: johanneselias/dokuwiki-backup
      volumes: 
        - ./backups:/backups
      ports:
