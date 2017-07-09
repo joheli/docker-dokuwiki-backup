@@ -1,0 +1,18 @@
+#!/bin/bash
+
+# load environment variables (starting with "DOKUWIKI_")
+source <(sed -r -n 's/[^#]+/export &/ p' /setup/*.env)
+
+# schedule backup purge and database backup
+echo -e "${DOKUWIKI_BACKUP_SCHEDULE}\troot\tdokuwiki-purge-backups" >> /etc/crontab && \
+   echo -e "${DOKUWIKI_BACKUP_SCHEDULE}\troot\tdokuwiki-backup" >> /etc/crontab
+
+# echo success
+if [ $? -eq 0 ]; then
+	echo "$0: /etc/crontab has been successfully edited."
+else
+	echo "$0: There was a problem editing /etc/crontab!"
+	exit 1
+fi
+
+exit 0

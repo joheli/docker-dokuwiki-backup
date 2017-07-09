@@ -1,0 +1,92 @@
+#!/bin/bash
+
+# load environment variables 
+source <(sed -r -n 's/[^#]+/export &/ p' /setup/*.env)
+
+# help
+help () {
+	echo -e "\n$0 usage:"
+	echo -e "   switches:"
+	echo -e "      -d         debug mode - only extract files"
+	echo -e "      -f [File]  supply specific file to restore"
+	echo -e "      -h         print this help"
+}
+
+# clean up
+cleanup () {
+	CLEANDIR=$1
+	if [ -d $CLEANDIR ]; then
+		rm -R $CLEANDIR
+	fi
+}
+
+# default values for DEBUG
+DEBUG=false
+
+# get options for debug and use a specific backup file
+while getopts "df:hi" OPTION; do
+        case $OPTION in
+                d)
+                        DEBUG=true
+                        ;;
+                f)
+                        BACKUPFILE=$OPTARG
+                        if [ ! -f $BACKUPFILE ]; then
+                                echo "The supplied file $BACKUPFILE does not exist!"
+                                exit 1
+                        fi
+                        ;;
+		h)
+			help
+			exit 2
+			;;
+			
+                \?)
+                        help
+                        exit 3
+                        ;;
+        esac
+done
+
+# checks
+if [ ! -d ${DOKUWIKI_BACKUP_DIR} ]; then
+        echo "$0: backup directory ${DOKUWIKI_BACKUP_DIR} does not exist!"
+        exit 4
+fi
+
+if [ $(ls -1A ${DOKUWIKI_BACKUP_DIR}/*7z | wc -l) -eq 0 ]; then
+        echo "$0: backup directory ${DOKUWIKI_BACKUP_DIR} does not contain any compressed backups!"
+        exit 5
+fi
+
+# by default, the newest file in the backup directory is chosen
+BACKUPFILE=$(ls ${DOKUWIKI_BACKUP_DIR}/*.7z -t | head -n1)
+
+# Timestamp etc.
+TSTMP=$(date +"%Y%m%d_%H%M")
+EXTRACTDIR=/tmp/${TSTMP}
+UNTARDIR=${EXTRACTDIR}/untar
+
+# extract to temporary directory and untar contents
+7zr -o${EXTRACTDIR} e ${BACKUPFILE} && mkdir ${UNTARDIR} && tar -xf ${EXTRACTDIR}/*.tar -C ${UNTARDIR}
+# Problem?
+if [ $? -ne 0 ]; then
+	echo "$0: there was a problem with extracting ${BACKUPFILE} to ${EXTRACTDIR}!"
+	cleanup ${EXTRACTDIR}
+	exit 6
+fi
+
+# restore & clean up
+if [ "$DEBUG" == false ]; then
+	rm -R ${DOKUWIKI_INSTALL_PATH} && mkdir -p ${DOKUWIKI_INSTALL_PATH} && cp -Rp ${UNTARDIR}/* ${DOKUWIKI_INSTALL_PATH} && cleanup ${EXTRACTDIR}
+	# echo success
+	if [ $? -eq 0 ]; then
+		echo "$0: DOKUWIKI backup has successfully been restored from $BACKUPFILE."
+	else
+		echo "$0: there was a problem restoring DOKUWIKI backup $BACKUPFILE!"
+		exit 11
+	fi
+fi
+
+exit 0
+

@@ -1,0 +1,36 @@
+#!/bin/bash
+
+# load environment variables pertaining to wordpress (starting with "DOKUWIKI_")
+source <(sed -r -n 's/[^#]+/export &/ p' /setup/*.env)
+
+# timestamp
+TSTMP=$(date +"%Y%m%d_%H%M")
+
+# out files
+OUTTAR=/tmp/${TSTMP}.tar
+OUTENV=/tmp/${TSTMP}.env
+OUT7Z=/backups/${TSTMP}.7z
+
+# append dokuwiki environment variables as well
+cat $DOKUWIKI_ENVIRONMENT >> ${OUTENV}
+
+# tar wordpress installation and compress with 7z
+tar -cf ${OUTTAR} -C ${DOKUWIKI_INSTALL_PATH} . && 7zr a ${OUT7Z} ${OUTTAR} ${OUTENV}
+# Problem?
+if [ $? -ne 0 ]; then
+	echo "$0: there was a problem with compressing files in ${DOKUWIKI_INSTALL_PATH}!"
+	exit 1
+fi
+
+# clean up
+rm ${OUTTAR} ${OUTENV}
+
+# echo success
+if [ $? -eq 0 ]; then
+	echo "$0: backup was successfully created and compressed into ${OUT7Z}"
+else
+	echo "$0: there was a problem backing up dokuwiki into ${OUT7Z}!"
+	exit 2
+fi
+
+exit 0

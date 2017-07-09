@@ -1,0 +1,69 @@
+#!/bin/bash
+set -euox pipefail
+
+# set environment variables pertaining to wordpress
+export DOKUWIKI_SUB_DIR="${DOKUWIKI_SUB_DIR:-dokuwiki}"
+export DOKUWIKI_SITE_NAME="${DOKUWIKI_SUB_DIR}"
+export DOKUWIKI_INSTALL_PATH="/var/www/${DOKUWIKI_SUB_DIR}"
+export DOKUWIKI_BACKUP_SCHEDULE="${DOKUWIKI_BACKUP_SCHEDULE:-0 0 * * *}"
+export DOKUWIKI_BACKUP_CLEAN_DAYS=${DOKUWIKI_BACKUP_CLEAN_DAYS:-7}
+export DOKUWIKI_BACKUP_MIN_FILES=${DOKUWIKI_BACKUP_MIN_FILES:-3}
+export DOKUWIKI_BACKUP_DIR=${DOKUWIKI_BACKUP_DIR:-/backups}
+export DOKUWIKI_ENVIRONMENT=/setup/dokuwiki-docker.env
+
+# export environment variables pertaining to wordpress to a file
+set | grep DOKUWIKI > ${DOKUWIKI_ENVIRONMENT} 
+
+# restorecheck: returns "yes" if there is something to restore
+restorecheck () {
+	local RESULT="yes"
+	# the following line generates an error, god knows why...
+	if [ ! -d ${DOKUWIKI_BACKUP_DIR} ]; then
+		RESULT="no"
+	fi
+
+	if [ $(ls -1A ${DOKUWIKI_BACKUP_DIR}/*7z | wc -l) -eq 0 ]; then
+		RESULT="no"
+	fi
+
+	echo $RESULT
+}
+
+
+
+# create the installation path to copy the wordpress installation to
+mkdir -p $DOKUWIKI_INSTALL_PATH
+
+# backup apache2.conf, create site configuration
+cp /etc/apache2/apache2.conf /etc/apache2/apache2.conf_old
+SITECONF=/etc/apache2/sites-available/${DOKUWIKI_SITE_NAME}.conf
+cp /etc/apache2/sites-available/000-default.conf ${SITECONF}
+cat /etc/apache2/sites-available/000-default.conf | sed -e "s#/var/www/html#${DOKUWIKI_INSTALL_PATH}#g" -e "/DocumentRoot/a \\\t<Directory $DOKUWIKI_INSTALL_PATH>\n\t\tOptions Indexes FollowSymLinks MultiViews\n\t\tAllowOverride All\n\t\tOrder allow,deny\n\t\tallow from all\n\t</Directory>" > ${SITECONF}
+
+# is there something to restore?
+if [ "$(restorecheck)" == "yes" ]; then
+	# yes? then restore it!
+	echo "$0: at least one backup file was found in ${DOKUWIKI_BACKUP_DIR}! Attempting to restore ..."
+	dokuwiki-restore
+else
+	# no? copy naked dokuwiki
+	cp -R /setup/dokuwiki/* ${DOKUWIKI_INSTALL_PATH}
+	chown -R www-data:www-data ${DOKUWIKI_INSTALL_PATH}
+fi
+
+# activate site configuration
+a2dissite 000-default
+a2ensite ${DOKUWIKI_SITE_NAME}
+
+# edit crontab for automated backups
+dokuwiki-configure-cron
+
+# start or restart services: cron, apache2
+service cron restart
+apache2ctl -DFOREGROUND
+
+exec "$@"
+
+
+
+

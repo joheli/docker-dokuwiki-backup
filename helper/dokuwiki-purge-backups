@@ -1,0 +1,13 @@
+#!/bin/bash
+
+# load environment variables (starting with "DOKUWIKI_")
+source <(sed -r -n 's/[^#]+/export &/ p' /setup/*.env)
+
+FILE_COUNT=$(ls ${DOKUWIKI_BACKUP_DIR} | wc -l)
+
+if [ ${FILE_COUNT} -gt ${DOKUWIKI_BACKUP_MIN_FILES} ]; then
+	find ${DOKUWIKI_BACKUP_DIR} -mtime +${DOKUWIKI_BACKUP_CLEAN_DAYS} -exec rm {} \;
+fi
+
+exit 0
+
